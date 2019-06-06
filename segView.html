@@ -81,7 +81,10 @@ function getUrlVars() {
 var demo = 'no';
 var fn = getUrlVars()['fn'];
 var user = getUrlVars()['u'];
+var select_str = '# mpv EDL v0;';  // as required by EDL file syntax as first line, may not need dangling ;
 demo = getUrlVars()['d'];
+document.title = "your Vidd.ai segment map - " + fn;
+var select_set = new Set();
 
 if (demo == 'demo') {
     width = 700;
@@ -109,6 +112,7 @@ function update(filter, in_graph) {
         case 'all': graph = in_graph.all; break;
         case 'vary': graph = in_graph.vary; break;
         case 'long': graph = in_graph.long; break;
+        case 'selected': graph = in_graph; break;
         default: graph = in_graph.long; break;
    }
 
@@ -116,7 +120,6 @@ function update(filter, in_graph) {
     	.size([width, height])
     	.charge(-400)
     	.linkDistance(function(d) { return radius(d.source.size) + radius(d.target.size) + linkDistanceConstant; });
-
 
   force
       	.nodes(graph.nodes)
@@ -135,22 +138,17 @@ function update(filter, in_graph) {
   link.filter(function(d) { return d.bond > 1; }).append("line")
   	.attr("class", "separator");
 
-  //console.log('before class node, AFTER remove:' + d3.selectAll(".node").size());
-
-  // bind new data
+  // redraw svg
+  d3.select("svg").remove();
+  svg = d3.select("#graphDiv").append("svg")
+      .attr("width", width)
+      .attr("height", height);
   var node = svg.selectAll(".node")
-	.data(graph.nodes);
-  //console.log('after data:' + d3.selectAll(".node").size());
-  //console.log('svg.selectAll after data:' + svg.selectAll(".node").size());
-
-  // remove old data
-  node.exit().remove();
+      .data(graph.nodes);
 
   node.enter().append("g")
       .attr("class", "node")
       .call(force.drag);
-
-  //console.log('after .node:' + d3.selectAll(".node").size());
 
   node.append("rect")
       .attr("width", rectWidth)
@@ -205,10 +203,14 @@ function update(filter, in_graph) {
 			alert ('Segment ' + d.atom + ' unselected. Click again select.');
 			d3.select(this).classed('selected', false);
 			d3.select(this).style('opacity', 1);
+			select_set.delete(d.atom);
+			console.log('just unselected, select_set:',select_set);
 		} else {
 			alert ('Segment ' + d.atom + ' selected. Click again unselect.');
 			d3.select(this).classed('selected', true);
 			d3.select(this).style('opacity', 0.1);
+			select_set.add(d.atom);
+			console.log('just selected, select_set:',select_set);
 		}
 	})
 	.on("mouseenter", function(d) {
@@ -233,9 +235,44 @@ function update(filter, in_graph) {
                         .attr("width",  function(d) { return (2 * d.image_width) })
                         .attr("height",  function(d) { return (2 * d.image_height) });
 	})
+        ;
+
+  function tick() {
+    link.selectAll("line")
+        .attr("x1", function(d) { return d.source.x; })
+        .attr("y1", function(d) { return d.source.y; })
+        .attr("x2", function(d) { return d.target.x; })
+        .attr("y2", function(d) { return d.target.y; });
+
+    node.attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
+    };
+
+  function resize() {
+    width = window.innerWidth, height = window.innerHeight;
+    svg.attr("width", width).attr("height", height);
+    force.size([width, height]).resume();
+  }
+
+  resize();
+  d3.select(window).on("resize", resize);
+
+} // end update()
 
 
     $(document).ready(function () {
+        var selected_graph = {}, all_nodes = [];
+        selected_graph["nodes"] = [];
+        selected_graph["links"] = [];
+
+        $.getJSON(json_fn, function (data) {
+            if (data["all"].length == 0) {
+              console.log("reading d3.json file: Cannot find any nodes");
+              return;
+            }
+            all_nodes = data["all"].nodes;
+            console.log('all_nodes:',all_nodes);
+        })
+
 
 	var cat_or_file = 'Category';
 	if (getUrlVars()['c'] == 'File') {
@@ -261,39 +298,21 @@ function update(filter, in_graph) {
             });
 
         $('#categoryMap').on('click', function () {
-            window.location.href = "cat.segSummary.html?u=" + user;
+            window.location.href = "segSummary.html?u=" + user + '&c=Cat';
             });
 
         $('#fileMap').on('click', function () {
-            window.location.href = "segSummary.html?u=" + user;
+            window.location.href = "segSummary.html?u=" + user + '&c=File';
             });
 
         $('#VIDD').on('click', function () {
             window.location.href = "https://viddai.bitbucket.io";
             });
 
-/*
-        $('#summaryPage').on('click', function () {
-            window.location.href = "cat.segSummary.html?u=" + user;
-            });
-*/
-
-        d3.select('#Selected').on('click', function () {
-            var x = d3.selectAll("image[image-selected='1']");
-            x.style("opacity", 1);
-            //d3.selectAll(".NoFace").style("opacity", 1);
-            d3.selectAll(".HasFace").style("opacity", 0);
-            d3.selectAll(".Blurry").style("opacity", 0);
-            x.each(function (d, i) {
-                console.log(d3.select(this).attr("xlink:href"));
-            })
-        });
-
         d3.select('#NoFace').on('click', function () {
             var x = d3.selectAll(".NoFace");
             x.style("opacity", 1);
             d3.selectAll(".HasFace").style("opacity", 0);
-            d3.selectAll(".Blurry").style("opacity", 0);
             /*
             x.each( function(d, i){
                     console.log( d3.select(this).attr("xlink:href") );
@@ -305,7 +324,6 @@ function update(filter, in_graph) {
             var x = d3.selectAll(".HasFace");
             x.style("opacity", 1);
             d3.selectAll(".NoFace").style("opacity", 0);
-            d3.selectAll(".Blurry").style("opacity", 0);
             /*
             x.each( function(d, i){
                     console.log( d3.select(this).attr("xlink:href") );
@@ -314,77 +332,51 @@ function update(filter, in_graph) {
         });
 
         d3.select('#Selected').on('click', function () {
-            d3.selectAll(".NoFace").style("opacity", 0);
-            d3.selectAll(".HasFace").style("opacity", 0);
-            d3.selectAll(".Blurry").style("opacity", 0);
-            d3.selectAll(".Non-Blurry").style("opacity", 0);
-            var x = d3.selectAll(".selected");
-            x.style("opacity", 1);
-            x.each(function (d, i) {
-                console.log(d3.select(this).attr("xlink:href"));
-            })
+           // convert select_set to a graph D3 recognizes so it can be redrawn on svg
+           var x = [...select_set];
+	   selected_graph["nodes"] = [];
+	   for (var i = 0; i < x.length; i++) {
+                selected_graph["nodes"].push(all_nodes[x[i]]);
+	   }
+	   //console.log('selected_graph:',selected_graph["nodes"]);
+           update('selected', selected_graph);
         });
 
-        d3.select('#Blurry').on('click', function () {
-            d3.selectAll(".NoFace").style("opacity", 0);
-            d3.selectAll(".HasFace").style("opacity", 0);
-            var x = d3.selectAll(".Blurry");
-            x.style("opacity", 1);
-            /*
-            x.each( function(d, i){
-                    console.log( d3.select(this).attr("xlink:href") );
-            })
-            */
-        });
-
-        d3.select('#Non-Blurry').on('click', function () {
-            d3.selectAll(".NoFace").style("opacity", 0);
-            d3.selectAll(".HasFace").style("opacity", 0);
-            var x = d3.selectAll(".Non-Blurry");
-            x.style("opacity", 1);
-            /*
-            x.each( function(d, i){
-                    console.log( d3.select(this).attr("xlink:href") );
-            })
-            */
-        });
         d3.select('#Send').on('click', function () {
-            var x = d3.selectAll(".selected");
-            x.style("opacity", 1);
-            var ids = new Array(x.length);
-            var nodes = x.data();
-            for (var i = 0; i < nodes.length; i++) {
-                //var da = x.datum(function (d) { return d.atom; });
+            var ids2 = {};
+            var nodes = [...select_set];
 
-                ids[i] = nodes[i].atom;
-                console.log(i.toString() + ',' + nodes[i].atom.toString());
+            for (var i = 0; i < nodes.length; i++) {
+		ids2[i] = {"atom": nodes[i], "sec_start": all_nodes[nodes[i]].sec_start, "sec_end": all_nodes[nodes[i]].sec_end, "sec_len": all_nodes[nodes[i]].sec_len};
+		select_str += '\n' + fn + ',' + all_nodes[nodes[i]].sec_start.toString() + ',' + all_nodes[nodes[i]].sec_len.toString() + ';';
             }
 
-              $.ajax({
-                  type: "POST",
-                  url: '/Job/UpdateSelectedSegments?appUserId=93c09755-62ca-4c35-85ba-4dd222ca4ad3&jobId=cdfff2e5-0c7d-4fbb-889c-4e5726f75243&ids='+JSON.stringify(ids),
-                  contentType: "application/json",
-                  dataType:"json",
-                data: JSON.stringify(ids),
-                  success: function (response) {
-                      alert(response.responseText);
-                }
-            });
+	    //console.log('select_str:',select_str);
+	    // write selected_str to text file
+	    var a = document.getElementById('download_a');
+	    a.href = "data:text/plain;charset=UTF-8," + encodeURIComponent(select_str); // nb: must encode URI or won't save properly
+	    a.download = fn + '.edl';
+	    a.click(); // fire click event
+	    select_str = '# mpv EDL v0;'; // reset 
 
+	    // save selected on server
+	    var surl = 'http://stream.vidd.ai/receiveSelected.php?u=' + user + '&fn=' + fn;
+	    console.log('ids2', ids2);
 
+            $.ajax({
+                 type: "POST",
+                 url: surl,
+                 contentType: "application/json",
+                 dataType:"json",
+                 data: JSON.stringify(ids2),
+                 success: function (response) {
+                    alert(response.responseText);
+                  }
+              });
+	    return;
         });
     });
 
-  function tick() {
-    link.selectAll("line")
-        .attr("x1", function(d) { return d.source.x; })
-        .attr("y1", function(d) { return d.source.y; })
-        .attr("x2", function(d) { return d.target.x; })
-        .attr("y2", function(d) { return d.target.y; });
-
-    node.attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
-    };
-}
 </script>
 <div>
 <span id="fileSummary" class="text"></span>
@@ -399,29 +391,20 @@ function update(filter, in_graph) {
     &nbsp;&nbsp;&nbsp;
     |
     &nbsp;&nbsp;&nbsp;
-    <button id="Selected">Show selected</button>
+    <button id="Selected" clase="btn btn-outline-light" data-toggle="button">Show selected</button>
     <button id="Send">Save Selected</button>
+    <a class="btn btn-info" id="download_a" href="" download="filename.edl" style="display:none">Download</a>
     &nbsp;&nbsp;&nbsp;
     |
     &nbsp;&nbsp;&nbsp;
     <button id="categoryMap">Category map</button>
     <button id="fileMap">File map</button>
     <button id="VIDD">Vidd.ai</button>
-<!--
-    <button id="summaryPage">VIDD category map</button>
-    |
-    (COMING SOON
-    <button id="Blurry">In Focus</button>
-    <button id="Non-Blurry">Out of Focus</button> &nbsp;&nbsp;&nbsp; <button id="Non-Blurry">Good Exposure</button> <button id="Blurry">Under/Overexposed</button>
-    )
--->
     <br /><br />
 </div>
 
+</div>
 
-    </div>
-
-    
 </body>
 </html>
 

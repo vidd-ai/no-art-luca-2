@@ -1,13 +1,6 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=1000">
-<meta name="twitter:card" content="vidd.ai summary">
-<meta name="twitter:site" content="@viddai">
-<meta property="og:url" content="https://viddai.bitbucket.io">
-<meta property="og:title" content="Demo">
-<meta property="og:description" content="Vidd.ai file map">
-<meta property="og:image" content="https://viddai.bitbucket.io">
-<title>Vidd.ai file map</title>
 <link rel="icon" href="/favicon.png">
 
 <style>
@@ -49,34 +42,23 @@ form {
 </style>
 
 <body>
+<div id="graph_div">
 <form>
-  <label><input type="radio" name="dataset" value="apples" checked> Files</label>
-  <label><input type="radio" name="dataset" value="oranges"> Categories</label>
+  <label><input id="input_files" type="radio" name="dataset" value="apples"> Files</label>
+  <label><input id="input_category" type="radio" name="dataset" value="oranges"> Categories</label>
 </form>
+</div>
+<div id="legend_div"></div>
+
 
 <script src="//d3js.org/d3.v3.min.js"></script>
 <script src="js/jquery.min.js"></script>
 <script>
 
+// set defaults
 var width = 900,
     height = 570,
     root;
-
-var force = d3.layout.force()
-    .linkDistance(80)
-    .charge(-120)
-    .gravity(.05)
-    .size([width, height])
-    .on("tick", tick);
-
-
-var svg = d3.select("body").append("svg")
-    .attr("width", width)
-    .attr("height", height);
-
-var link = svg.selectAll(".link"),
-    node = svg.selectAll(".node");
-
 
 function getUrlVars() {
     var vars = {};
@@ -87,7 +69,44 @@ function getUrlVars() {
 }
 
 var user = getUrlVars()['u'];
-var fn = 'output/' + user + '/' + user + '.all.json';
+var summary_type = getUrlVars()['c'];
+var ext = '.all';
+if (summary_type.match(/cat/i)) {
+   ext = '.cat';
+   document.getElementById("input_category").checked = true;
+} else {
+   document.getElementById("input_files").checked = true;
+}
+
+var link_distance = 80,
+  children_level = 2,
+  padding = 150; // padding around the graph
+
+width = (link_distance * children_level) * 2 + padding; // graph radius + padding
+height = width;
+width += padding; // add more
+//console.log('width:',width);
+
+var force = d3.layout.force()
+    .linkDistance(80)
+    .charge(-120)
+    .gravity(.05)
+    .size([width, height])
+    .on("tick", tick);
+
+
+//var svg = d3.select("body").append("svg")
+var svg = d3.select("#graph_div").append("svg")
+    .attr("width", width)
+    .attr("height", height);
+
+var link = svg.selectAll(".link"),
+    node = svg.selectAll(".node");
+
+
+//var fn = 'output/' + user + '/' + user + '.all.json';
+var fn = 'output/' + user + '/' + user + ext + '.json';
+//console.log ('fn:',fn);
 
 d3.json(fn, function(error, json) {
   if (error) throw error;
@@ -95,6 +114,12 @@ d3.json(fn, function(error, json) {
   root = json;
   update();
 });
+
+function resize() {
+    width = window.innerWidth, height = window.innerHeight;
+    svg.attr("width", width).attr("height", height);
+    force.size([width, height]).resume();
+}
 
 function update() {
   var nodes = flatten(root),
@@ -134,6 +159,8 @@ function update() {
   node.select("circle")
       .style("fill", color);
 
+  resize();
+  d3.select(window).on("resize", resize);
 }
 
 function tick() {
@@ -155,7 +182,10 @@ function color(d) {
 function click(d) {
   if (d3.event.defaultPrevented) return; // ignore drag
   if (d.location) {
-  	url = d.location+ "?fn=" + d.name + "&u=" + user + "&c=File";
+  	//url = d.location+ "?fn=" + d.name + "&u=" + user + "&c=File";
+  	//window.open(encodeURI(url));
+  	//url = "viewer.html?v=" + d.location+ "&fn=" + d.name + "&u=" + user + "&c=File";
+  	url = "viewer.html?v=" + d.location+ "&fn=" + d.name + "&u=" + user + "&c=" + summary_type;
   	window.open(encodeURI(url));
   }
   if (d.children) {
@@ -182,42 +212,73 @@ function flatten(root) {
   return nodes;
 }
 
-// show category view
+// category view
   d3.selectAll("input")
       .on("change", change);
   function change() {
-    window.location.href = "cat.segSummary.html?u=" + user;
+    //window.location.href = "cat.segSummary.html?u=" + user;
+    //window.location.href = "segSummary.html?u=" + user + '&c=Cat';
+    if (summary_type.match(/cat/i)) {
+      summary_type = 'File';
+    } else {
+      summary_type = 'Cat';
+    }
+    window.location.href = "segSummary.html?u=" + user + '&c=' + summary_type;
   }
 
-
-
 </script>
-<svg width="960" height="170"><g transform="translate(0,100)"></g></svg>
+
 <script src="https://d3js.org/d3.v4.min.js"></script>
 <script src="https://d3js.org/colorbrewer.v1.min.js"></script>
 
 <script>
 
+var legend = d3.select("#legend_div").append("svg")
+    .attr("width", width)
+    .attr("height", 150);
+
+legend.append("g")
+    .attr("class", "axis")
+    .attr("transform", "translate(" + 0 + "," + 90 + ")");
+
 var formatPercent = d3.format(".0%"),
     formatNumber = d3.format(".0f");
+
+var json_fn = 'output/' + user + '/' + user + ext + '.json';
+
+//var input_data = [0.18, 0.06, 0.60];
+var input_data = [];
+$.getJSON(json_fn, function (data) {
+ if (data["children"].length == 0) {
+   console.log("Cannot find any nodes");
+   return;
+ }
+ $.each(data["children"], function (key, val) {
+   input_data.push(val.children.length / 100);
+ });
+//console.log('input_data:',input_data);
 
 var threshold = d3.scaleThreshold()
     //.domain([0.11, 0.22, 0.33, 0.50])
     //.range(["#6e7c5a", "#a0b28f", "#d8b8b3", "#b45554", "#760000"]);
-    .domain([0.18, 0.06, 0.60])
-    .range(colorbrewer.Oranges[3]);
+    .domain(input_data)
+    .range(colorbrewer.Oranges[input_data.length]);
+
+threshold = d3.scale.quantile()
+    .domain(input_data)
+    .range(colorbrewer.Oranges[input_data.length]);
 
 var x = d3.scaleLinear()
     .domain([0, 1])
-    .range([0, 240]);
+    .range([0, 1500]); // controles spacing of ticks
 
 var xAxis = d3.axisBottom(x)
-    .tickSize(13)
+    .tickSize(12)
     .tickValues(threshold.domain())
-    //.tickFormat(function(d) { return d === 0.5 ? formatPercent(d) : formatNumber(100 * d); });
     .tickFormat(function(d) { return d === 0.5 ? formatPercent(d) : formatNumber(100 * d); });
 
-var g = d3.select("g").call(xAxis);
+//var g = d3.select("g").call(xAxis);
+var g = legend.select("g").call(xAxis);
 
 g.select(".domain")
     .remove();
@@ -235,13 +296,19 @@ g.selectAll("rect")
     .attr("width", function(d) { return x(d[1]) - x(d[0]); })
     .attr("fill", function(d) { return threshold(d[0]); });
 
+var summary_text = 'file';
+if (summary_type.match(/cat/i)) {
+  summary_text = 'category';
+}
+
 g.append("text")
-    .attr("fill", "#000")
+    .attr("fill", "black")
     .attr("font-weight", "bold")
     .attr("text-anchor", "start")
     .attr("y", -6)
-    .text("An example VIDD file map: number of segments found");
-
+    .attr("opacity", "0.7")
+    .text("your Vidd.ai " + summary_text + " map: number of segments found");
+});
 </script>
 
 </body>
