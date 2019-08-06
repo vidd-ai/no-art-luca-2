@@ -56,8 +56,9 @@ form {
 <script>
 
 // set defaults
+   // height = 570,
 var width = 900,
-    height = 570,
+    height = 510,
     root;
 
 function getUrlVars() {
@@ -78,18 +79,10 @@ if (summary_type.match(/cat/i)) {
    document.getElementById("input_files").checked = true;
 }
 
-var link_distance = 80,
-  children_level = 2,
-  padding = 150; // padding around the graph
-
-width = (link_distance * children_level) * 2 + padding; // graph radius + padding
-height = width;
-width += padding; // add more
-//console.log('width:',width);
-
 var force = d3.layout.force()
-    .linkDistance(80)
-    .charge(-120)
+    //.linkDistance(80)
+    .linkDistance(25)
+    .charge(-60)
     .gravity(.05)
     .size([width, height])
     .on("tick", tick);
@@ -104,9 +97,7 @@ var link = svg.selectAll(".link"),
     node = svg.selectAll(".node");
 
 
-//var fn = 'output/' + user + '/' + user + '.all.json';
 var fn = 'output/' + user + '/' + user + ext + '.json';
-//console.log ('fn:',fn);
 
 d3.json(fn, function(error, json) {
   if (error) throw error;
@@ -216,14 +207,15 @@ function flatten(root) {
   d3.selectAll("input")
       .on("change", change);
   function change() {
-    //window.location.href = "cat.segSummary.html?u=" + user;
-    //window.location.href = "segSummary.html?u=" + user + '&c=Cat';
+    var s;
     if (summary_type.match(/cat/i)) {
       summary_type = 'File';
+      s = "segSummary.html&u=" + user + '&c=' + summary_type;
     } else {
       summary_type = 'Cat';
+      s = "category_map/index.html&u=" + user + '&c=' + summary_type;
     }
-    window.location.href = "segSummary.html?u=" + user + '&c=' + summary_type;
+    window.location.href = "viewer.html?v=" + s;
   }
 
 </script>
@@ -247,7 +239,9 @@ var formatPercent = d3.format(".0%"),
 var json_fn = 'output/' + user + '/' + user + ext + '.json';
 
 //var input_data = [0.18, 0.06, 0.60];
-var input_data = [];
+var input_data = [],
+    seg_data = [];
+
 $.getJSON(json_fn, function (data) {
  if (data["children"].length == 0) {
    console.log("Cannot find any nodes");
@@ -255,6 +249,7 @@ $.getJSON(json_fn, function (data) {
  }
  $.each(data["children"], function (key, val) {
    input_data.push(val.children.length / 100);
+   seg_data.push(val.children.length)
  });
 //console.log('input_data:',input_data);
 
@@ -266,11 +261,14 @@ var threshold = d3.scaleThreshold()
 
 threshold = d3.scale.quantile()
     .domain(input_data)
-    .range(colorbrewer.Oranges[input_data.length]);
+    .range(colorbrewer.Oranges[seg_data.length]);
+    //.range(colorbrewer.Oranges[input_data.length]);
 
 var x = d3.scaleLinear()
     .domain([0, 1])
-    .range([0, 1500]); // controles spacing of ticks
+    .range([d3.min(seg_data), d3.max(seg_data)]); // controles spacing of ticks
+    //.range([0, 209]); // controles spacing of ticks
+    //.range([0, 1500]); // controles spacing of ticks, default to 1500
 
 var xAxis = d3.axisBottom(x)
     .tickSize(12)
